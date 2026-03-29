@@ -49,6 +49,9 @@ admin_addr = ":8800"
 # Enable tcp proxy protocol
 proxy_protocol = false
 
+# Enable logging for the Go standard library's http.Server.
+http_server_log=false
+
 link_mode = "tun"
 
 # IP address pool assigned by the client

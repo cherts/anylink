@@ -23,7 +23,7 @@ Protocol development, and draws on the development ideas of [ocserv](http://ocse
 
 AnyLink uses TLS/DTLS for data encryption, so an RSA or ECC certificate is required. A private self-signed certificate can be used. You can apply for a free SSL certificate through Let's Encrypt and TrustAsia.
 
-The AnyLink server has only been tested on CentOS 7, CentOS 8, Ubuntu 18, Ubuntu 20, Ubuntu 20, and AnolisOS 8. If you need to install it on other systems, the server must support the tun/tap interface, ip and iptables command.
+The AnyLink server has only been tested on CentOS 7, CentOS 8, Ubuntu 18, Ubuntu 20, Ubuntu 20, Ubuntu 22, Ubuntu24, Debian 10, Debian 11, Debian 12, Debian 13 and AnolisOS 8. If you need to install it on other systems, the server must support the tun/tap interface, ip and iptables command.
 
 ## Screenshot
 
@@ -111,7 +111,11 @@ sudo ./anylink
 - [x] Support intranet domain name resolution (specified domain names go through intranet dns)
 - [x] Add user verification anti-explosion function (IP BAN)
 - [x] Support docker non-privileged mode
-- [ ] Bridge access mode based on ipvtap device
+- [x] Supports custom certificate login verification
+- [x] Supports WeChat QR code login
+- [x] Supports client certificate binding to device
+- [x] Supports automatic LDAP user synchronization
+- [ ] Bridged access mode based on IPvtap devices
 
 ## Config
 
@@ -169,7 +173,7 @@ sudo ./anylink
 
 > One of the following parameters must be set
 
-To select the network mode, you need to configure the `link_mode` parameter, such as `link_mode="tun"`, `link_mode="macvtap"`, `link_mode="tap"(not recommended)` and other parameters.
+To select the network mode, you need to configure the `link_mode` parameter, such as `link_mode="tun"`, `link_mode="macvtap"` and other parameters.
 Different parameters require corresponding settings on the server.
 
 It is recommended to choose tun mode first, followed by macvtap mode, because the client transmits IP layer data and does not need to perform data conversion. tap mode is done in user mode at the link layer to
@@ -299,28 +303,28 @@ ipv4_end = "10.1.2.200"
 ## Systemd
 
 1. Add anylink program
-    - Copy `anylink-deploy/anylink` binary to `/usr/sbin/anylink`
-    - Add execution permissions `chmod +x /usr/sbin/anylink`
+   - Copy `anylink-deploy/anylink` binary to `/usr/sbin/anylink`
+   - Add execution permissions `chmod +x /usr/sbin/anylink`
 
 2. Added config file
-    - Create config directory `/etc/anylink`
-    - Copy file `anylink-deploy/conf/server-sample.toml` to `/etc/anylink/server.toml`
-    - Copy file `anylink-deploy/conf/profile.xml`, `anylink-deploy/conf/vpn_cert.crt`, `anylink-deploy/conf/vpn_cert.key` to `/etc/anylink`
+   - Create config directory `/etc/anylink`
+   - Copy file `anylink-deploy/conf/server-sample.toml` to `/etc/anylink/server.toml`
+   - Copy file `anylink-deploy/conf/profile.xml`, `anylink-deploy/conf/vpn_cert.crt`, `anylink-deploy/conf/vpn_cert.key` to `/etc/anylink`
 
 3. Added working file
-    - Create working directory `/var/lib/anylink` and `/var/lib/anylink/files`
-    - Copy file `anylink-deploy/conf/files/index.html`, `anylink-deploy/conf/files/info.txt` to `/var/lib/anylink/files`
+   - Create working directory `/var/lib/anylink` and `/var/lib/anylink/files`
+   - Copy file `anylink-deploy/conf/files/index.html`, `anylink-deploy/conf/files/info.txt` to `/var/lib/anylink/files`
 
 4. Copy systemd unit file `anylink-deploy/systemd/anylink.service` to:
-    - for CentOS: `/usr/lib/systemd/system/`
-    - for Ubuntu: `/lib/systemd/system/`
-    - and exec: `systemctl daemon-reload`
+   - for CentOS: `/usr/lib/systemd/system/`
+   - for Ubuntu: `/lib/systemd/system/`
+   - and exec: `systemctl daemon-reload`
 
 5. Operation command:
-    - Reload systemd configuration: `systemctl daemon-reload`
-    - Start anylink: `systemctl start anylink`
-    - Stop anylink: `systemctl stop anylink`
-    - Start automatically at boot: `systemctl enable anylink`
+   - Reload systemd configuration: `systemctl daemon-reload`
+   - Start anylink: `systemctl start anylink`
+   - Stop anylink: `systemctl stop anylink`
+   - Start automatically at boot: `systemctl enable anylink`
 
 ### Docker Compose
 
@@ -367,17 +371,7 @@ ipv4_end = "10.1.2.200"
    docker run -it --rm cherts/anylink tool -d
    ```
 
-6. iptables compatibility settings
-   ```bash
-   # By default, iptables uses nf_tables to set forwarding rules. If the kernel is lower than version 4.19, special configuration is required.
-   docker run -itd --name anylink --privileged \
-      -e IPTABLES_LEGACY=on \
-      -p 443:443 -p 8800:8800 -p 443:443/udp \
-      --restart=always \
-      cherts/anylink
-   ```
-
-7. Start container
+6. Start container
 
    ```bash
    # Start by default
@@ -398,7 +392,7 @@ ipv4_end = "10.1.2.200"
    docker restart anylink
    ```
 
-8. Start container with custom parameters
+7. Start container with custom parameters
    ```bash
    # Parameters can refer to ./anylink tool -d
    # You can use command line parameters or environment variables to configure
@@ -411,7 +405,7 @@ ipv4_end = "10.1.2.200"
        --ip_lease=1209600 # IP address lease length
    ```
 
-9. Start the container in non-privileged mode
+8. Start the container in non-privileged mode
    ```bash
    # For parameters, please refer to ./anylink tool -d
    # You can use command line parameters or environment variables to configure
@@ -422,7 +416,7 @@ ipv4_end = "10.1.2.200"
        cherts/anylink
    ```
 
-10. Build the image (optional)
+9. Build the image (optional)
 
    ```bash
    # Get the warehouse source code

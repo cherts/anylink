@@ -21,6 +21,7 @@ var UiData embed.FS
 func StartAdmin() {
 
 	r := mux.NewRouter()
+	r.Use(recoverHttp, authMiddleware, handlers.CompressHandler)
 	// Add security headers to all routes
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
