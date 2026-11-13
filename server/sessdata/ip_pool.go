@@ -49,41 +49,7 @@ func initIpPool() {
 	IpPool.IpLongMax = utils.Ip2long(ipEnd)
 
 	loopCurIp = IpPool.IpLongMin
-
-	// Network address zero value
-	// zero := binary.BigEndian.Uint32(ip.Mask(mask))
-	// broadcast address
-	// one, _ := ipNet.Mask.Size()
-	// max := min | uint32(math.Pow(2, float64(32-one))-1)
-
-	// Get IpLease data
-	// go cronIpLease()
 }
-
-// func cronIpLease() {
-// 	getIpLease()
-// 	tick := time.NewTicker(time.Minute * 30)
-// 	for range tick.C {
-// 		getIpLease()
-// 	}
-// }
-//
-// func getIpLease() {
-// 	xdb := dbdata.GetXdb()
-// 	keepIpMaps := []dbdata.IpMap{}
-// 	// sNow := time.Now().Add(-1 * time.Duration(base.Cfg.IpLease) * time.Second)
-// 	err := xdb.Cols("ip_addr", "mac_addr").Where("keep=?", true).Find(&keepIpMaps)
-// 	if err != nil {
-// 		base.Error(err)
-// 	}
-// 	log.Println(keepIpMaps)
-// 	ipPoolMux.Lock()
-// 	ipKeep = map[string]string{}
-// 	for _, v := range keepIpMaps {
-// 		ipKeep[v.IpAddr] = v.MacAddr
-// 	}
-// 	ipPoolMux.Unlock()
-// }
 
 func ipInPool(ip net.IP) bool {
 	if utils.Ip2long(ip) >= IpPool.IpLongMin && utils.Ip2long(ip) <= IpPool.IpLongMax {
@@ -107,92 +73,99 @@ func AcquireIp(username, macAddr string, uniqueMac bool) (newIp net.IP) {
 		tNow = time.Now()
 	)
 
-	// Obtaining the client macAddr
+	// Priority check: IP reservation (Username)
+	userKeepMaps := []dbdata.IpMap{}
+	err = dbdata.FindWhere(&userKeepMaps, 10, 1, "username=? AND keep_username=?", username, true)
+	if err == nil && len(userKeepMaps) > 0 {
+		for _, mi := range userKeepMaps {
+			ipStr := mi.IpAddr
+			ip := net.ParseIP(ipStr)
+			if _, ok := ipActive[ipStr]; !ok && ipInPool(ip) {
+				mi.LastLogin = tNow
+				if macAddr != "" {
+					// If the new MAC already had an old non-backup entry, delete it to avoid a unique(mac_addr) conflict.
+					oldMac := &dbdata.IpMap{}
+					if errOld := dbdata.One("mac_addr", macAddr, oldMac); errOld == nil && oldMac.Id != mi.Id && !oldMac.Keep && !oldMac.KeepUsername {
+						_ = dbdata.Del(oldMac)
+					}
+					mi.MacAddr = macAddr
+				}
+				_ = dbdata.Set(&mi)
+				ipActive[ipStr] = true
+				return ip
+			}
+		}
+		base.Error(username, macAddr, "Reserved username IP is active or does not match CIDR")
+		return nil
+	}
+
+	// Obtaining the client's macAddr (standard MAC and Keep binding)
 	if uniqueMac {
-		// Determine whether it has been allocated
 		mi := &dbdata.IpMap{}
 		err = dbdata.One("mac_addr", macAddr, mi)
 		if err != nil {
-			// no data has been found
 			if dbdata.CheckErrNotFound(err) {
 				return loopIp(username, macAddr, uniqueMac)
 			}
-			// Query error report
 			base.Error(err)
 			return nil
 		}
 
-		// IP record exists
 		base.Trace("uniqueMac:", username, mi)
 		ipStr := mi.IpAddr
 		ip := net.ParseIP(ipStr)
-		// Skip active connections
 		_, ok := ipActive[ipStr]
-		// Check whether the original IP is in the new IP pool
-		// IpPool.Ipv4IPNet.Contains(ip) &&
-		// IP complies with the specification
-		// Check whether the original IP is in the new IP pool
 		if !ok && ipInPool(ip) {
 			mi.Username = username
 			mi.LastLogin = tNow
 			mi.UniqueMac = uniqueMac
-			// Write back db data
 			_ = dbdata.Set(mi)
 			ipActive[ipStr] = true
 			return ip
 		}
 
-		// IP reservation
-		if mi.Keep {
-			base.Error(username, macAddr, ipStr, "Reserved ip does not match CIDR")
+		// IP reservation (MAC)
+		if mi.Keep || mi.KeepUsername {
+			base.Error(username, macAddr, ipStr, "Reserved ip does not match CIDR or is active")
 			return nil
 		}
 
-		// Delete current macAddr
 		mi = &dbdata.IpMap{MacAddr: macAddr}
 		_ = dbdata.Del(mi)
 		return loopIp(username, macAddr, uniqueMac)
 	}
 
-	// If you don't have a Mac
+	// 3. If you don't have a Mac
 	ipMaps := []dbdata.IpMap{}
 	err = dbdata.FindWhere(&ipMaps, 30, 1, "username=?", username)
 	if err != nil {
-		// No data found
 		if dbdata.CheckErrNotFound(err) {
 			return loopIp(username, macAddr, uniqueMac)
 		}
-		// Query error
 		base.Error(err)
 		return nil
 	}
 
-	// Traverse mac records
 	for _, mi := range ipMaps {
 		ipStr := mi.IpAddr
 		ip := net.ParseIP(ipStr)
 
-		// Skip active connections
 		if _, ok := ipActive[ipStr]; ok {
 			continue
 		}
-		// Skip reserved ip
-		if mi.Keep {
+		if mi.Keep || mi.KeepUsername {
 			continue
 		}
 		if mi.UniqueMac {
 			continue
 		}
 
-		// No need to verify the lease period if you don't have a mac
-		// mi.LastLogin.Before(leaseTime) &&
 		if ipInPool(ip) {
 			mi.Username = username
 			mi.LastLogin = tNow
 			mi.MacAddr = macAddr
 			mi.UniqueMac = uniqueMac
-			//Write back db data
-			_ = dbdata.Set(mi)
+			_ = dbdata.Set(&mi)
 			ipActive[ipStr] = true
 			return ip
 		}
@@ -282,8 +255,8 @@ func loopLong(start, end uint32, username, macAddr string, uniqueMac bool) (uint
 		}
 
 		// Query the used IP
-		// Skip reserved ip
-		if mi.Keep {
+		// Skip reserved ip (by MAC or Username)
+		if mi.Keep || mi.KeepUsername {
 			continue
 		}
 		// Determine the lease term

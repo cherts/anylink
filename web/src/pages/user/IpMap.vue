@@ -71,6 +71,18 @@
                 </el-table-column>
 
                 <el-table-column
+                    prop="keep_username"
+                    label="IP reservation (Username)">
+                    <template slot-scope="scope">
+                        <el-switch
+                            disabled
+                            v-model="scope.row.keep_username"
+                            active-color="#13ce66">
+                        </el-switch>
+                    </template>
+                </el-table-column>
+
+                <el-table-column
                         prop="note"
                         label="Description">
                 </el-table-column>
@@ -148,9 +160,19 @@
                 <el-form-item label="IP reservation" prop="keep">
                     <el-switch
                             v-model="ruleForm.keep"
+                            @change="onKeepChange"
                             active-color="#13ce66">
                     </el-switch>
                 </el-form-item>
+
+                <el-form-item label="IP reservation (Username)" prop="keep_username">
+                    <el-switch
+                        v-model="ruleForm.keep_username"
+                        @change="onKeepUsernameChange"
+                        active-color="#13ce66">
+                    </el-switch>
+                </el-form-item>
+
 
                 <el-form-item>
                     <el-button type="primary" @click="submitForm('ruleForm')">Save</el-button>
@@ -176,6 +198,24 @@ export default {
     },
     mounted() {
         this.getData(1)
+    },   computed: {
+        rules() {
+            return {
+                username: [
+                    {required: !!this.ruleForm.keep_username, message: 'Please enter username', trigger: 'blur'},
+                    {max: 50, message: 'Less than 50 characters long', trigger: 'blur'}
+                ],
+                mac_addr: [
+                    {required: !this.ruleForm.keep_username, message: 'Please enter mac address', trigger: 'blur'}
+                ],
+                ip_addr: [
+                    {required: true, message: 'Please enter ip address', trigger: 'blur'}
+                ],
+                status: [
+                    {required: true}
+                ],
+            }
+        }
     },
     data() {
         return {
@@ -185,26 +225,26 @@ export default {
             ruleForm: {
                 status: 1,
                 groups: [],
-            },
-            rules: {
-                username: [
-                    {required: false, message: 'Please enter username', trigger: 'blur'},
-                    {max: 50, message: 'Less than 50 characters long', trigger: 'blur'}
-                ],
-                mac_addr: [
-                    {required: true, message: 'Please enter mac address', trigger: 'blur'}
-                ],
-                ip_addr: [
-                    {required: true, message: 'Please enter ip address', trigger: 'blur'}
-                ],
-
-                status: [
-                    {required: true}
-                ],
+                keep: false,
+                keep_username: false,
             },
         }
     },
     methods: {
+        onKeepChange(val) {
+            if (val) {
+                this.ruleForm.keep_username = false;
+            }
+        },
+        onKeepUsernameChange(val) {
+            if (val) {
+                this.ruleForm.keep = false;
+            }
+            if (this.$refs['ruleForm']) {
+                this.$refs['ruleForm'].clearValidate(['mac_addr', 'username']);
+            }
+        },
+
         getData(p) {
             axios.get('/user/ip_map/list', {
                 params: {
@@ -225,9 +265,14 @@ export default {
         },
         handleEdit(row) {
             !this.$refs['ruleForm'] || this.$refs['ruleForm'].resetFields();
-            //console.log(row)
             this.user_edit_dialog = true
             if (!row) {
+                this.ruleForm = {
+                    status: 1,
+                    groups: [],
+                    keep: false,
+                    keep_username: false,
+                };
                 return;
             }
 
